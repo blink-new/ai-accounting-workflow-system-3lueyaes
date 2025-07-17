@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback } from 'react'
-import { X, ZoomIn, ZoomOut, RotateCw, Download, Edit3, Save, Check, AlertTriangle, Eye, EyeOff, Loader2 } from 'lucide-react'
+import { useState, useEffect } from 'react'
+import { X, ZoomIn, ZoomOut, RotateCw, Download, Edit3, Save, Check, AlertTriangle, Eye, EyeOff } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './card'
 import { Button } from './button'
 import { Input } from './input'
@@ -63,8 +63,6 @@ export function InvoiceDetailView({
   const [editedData, setEditedData] = useState(invoice)
   const [showHighlights, setShowHighlights] = useState(true)
   const [activeField, setActiveField] = useState<string | null>(null)
-  const [convertedImageUrl, setConvertedImageUrl] = useState<string | null>(null)
-  const [isConverting, setIsConverting] = useState(false)
 
   // Mock extracted fields with bounding boxes for demonstration
   const [extractedFields] = useState<ExtractedField[]>([
@@ -124,31 +122,14 @@ export function InvoiceDetailView({
     setEditedData(invoice)
   }, [invoice])
 
-  // Convert PDF to image when dialog opens
+  // Reset state when dialog opens
   useEffect(() => {
-    if (isOpen && getFileType(invoice.fileName) === 'pdf') {
-      convertPdfToImage()
+    if (isOpen) {
+      setZoom(1)
+      setRotation(0)
+      setActiveField(null)
     }
-  }, [isOpen, invoice.fileUrl, invoice.fileName, convertPdfToImage])
-
-  const convertPdfToImage = useCallback(async () => {
-    setIsConverting(true)
-    try {
-      // Use Blink's screenshot functionality to convert PDF to image
-      const imageUrl = await blink.data.screenshot(invoice.fileUrl, {
-        fullPage: true,
-        width: 1200,
-        height: 1600
-      })
-      setConvertedImageUrl(imageUrl)
-      toast.success('PDF converted to image for viewing')
-    } catch (error) {
-      console.error('Failed to convert PDF to image:', error)
-      toast.error('Failed to convert PDF to image')
-    } finally {
-      setIsConverting(false)
-    }
-  }, [invoice.fileUrl])
+  }, [isOpen])
 
   const handleZoomIn = () => setZoom(prev => Math.min(prev + 0.25, 3))
   const handleZoomOut = () => setZoom(prev => Math.max(prev - 0.25, 0.5))
@@ -194,103 +175,52 @@ export function InvoiceDetailView({
   const renderDocumentViewer = () => {
     const fileType = getFileType(invoice.fileName)
     
-    // Handle PDF files - show converted image or loading state
+    // Handle PDF files - show in iframe
     if (fileType === 'pdf') {
-      if (isConverting) {
-        return (
-          <div className="bg-gray-100 rounded-lg p-8 text-center">
-            <Loader2 className="w-12 h-12 mx-auto mb-4 animate-spin text-primary" />
-            <h3 className="text-lg font-medium mb-2">Converting PDF to Image</h3>
-            <p className="text-muted-foreground">
-              Please wait while we prepare the document for viewing...
-            </p>
-          </div>
-        )
-      }
-
-      if (convertedImageUrl) {
-        return (
-          <div className="relative bg-gray-100 rounded-lg overflow-hidden">
-            <div 
-              className="relative inline-block"
-              style={{
-                transform: `scale(${zoom}) rotate(${rotation}deg)`,
-                transformOrigin: 'center',
-                transition: 'transform 0.2s ease'
-              }}
-            >
-              <img
-                src={convertedImageUrl}
-                alt={`${invoice.fileName} (converted)`}
-                className="max-w-full h-auto"
-                style={{ maxHeight: '800px' }}
-              />
-              
-              {/* Field Highlights Overlay */}
-              {showHighlights && (
-                <div className="absolute inset-0">
-                  {extractedFields.map((field) => (
-                    <div
-                      key={field.id}
-                      className={`absolute border-2 cursor-pointer transition-all duration-200 ${
-                        activeField === field.id 
-                          ? 'border-blue-500 bg-blue-500/20' 
-                          : field.isValidated 
-                            ? 'border-green-500 bg-green-500/10 hover:bg-green-500/20' 
-                            : 'border-yellow-500 bg-yellow-500/10 hover:bg-yellow-500/20'
-                      }`}
-                      style={{
-                        left: `${field.boundingBox?.x}px`,
-                        top: `${field.boundingBox?.y}px`,
-                        width: `${field.boundingBox?.width}px`,
-                        height: `${field.boundingBox?.height}px`,
-                      }}
-                      onClick={() => setActiveField(activeField === field.id ? null : field.id)}
-                      title={`${field.name}: ${field.value} (${field.confidence}% confidence)`}
-                    >
-                      {activeField === field.id && (
-                        <div className="absolute -top-8 left-0 bg-black text-white text-xs px-2 py-1 rounded whitespace-nowrap z-10">
-                          {field.name}: {field.value}
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-        )
-      }
-
-      // Fallback for PDF if conversion fails
       return (
-        <div className="bg-gray-100 rounded-lg p-8 text-center">
-          <div className="text-6xl mb-4">📄</div>
-          <h3 className="text-lg font-medium mb-2">PDF Document</h3>
-          <p className="text-muted-foreground mb-4">
-            Unable to convert PDF for preview
-          </p>
-          <div className="space-x-2">
-            <Button 
-              variant="outline" 
-              onClick={() => window.open(invoice.fileUrl, '_blank')}
-            >
-              <Download className="w-4 h-4 mr-2" />
-              Open PDF
-            </Button>
-            <Button 
-              variant="outline" 
-              onClick={convertPdfToImage}
-              disabled={isConverting}
-            >
-              {isConverting ? (
-                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-              ) : (
-                <Eye className="w-4 h-4 mr-2" />
-              )}
-              Retry Conversion
-            </Button>
-          </div>
+        <div className="relative bg-gray-100 rounded-lg overflow-hidden" style={{ height: '800px' }}>
+          <iframe
+            src={invoice.fileUrl}
+            className="w-full h-full border-0"
+            title={`PDF Viewer - ${invoice.fileName}`}
+            style={{
+              transform: `scale(${zoom}) rotate(${rotation}deg)`,
+              transformOrigin: 'center',
+              transition: 'transform 0.2s ease'
+            }}
+          />
+          
+          {/* Field Highlights Overlay - positioned over iframe */}
+          {showHighlights && (
+            <div className="absolute inset-0 pointer-events-none">
+              {extractedFields.map((field) => (
+                <div
+                  key={field.id}
+                  className={`absolute border-2 cursor-pointer transition-all duration-200 pointer-events-auto ${
+                    activeField === field.id 
+                      ? 'border-blue-500 bg-blue-500/20' 
+                      : field.isValidated 
+                        ? 'border-green-500 bg-green-500/10 hover:bg-green-500/20' 
+                        : 'border-yellow-500 bg-yellow-500/10 hover:bg-yellow-500/20'
+                  }`}
+                  style={{
+                    left: `${field.boundingBox?.x}px`,
+                    top: `${field.boundingBox?.y}px`,
+                    width: `${field.boundingBox?.width}px`,
+                    height: `${field.boundingBox?.height}px`,
+                  }}
+                  onClick={() => setActiveField(activeField === field.id ? null : field.id)}
+                  title={`${field.name}: ${field.value} (${field.confidence}% confidence)`}
+                >
+                  {activeField === field.id && (
+                    <div className="absolute -top-8 left-0 bg-black text-white text-xs px-2 py-1 rounded whitespace-nowrap z-10">
+                      {field.name}: {field.value}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )
     }
