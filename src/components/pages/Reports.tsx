@@ -82,7 +82,8 @@ export function Reports() {
   // Filter invoices based on date range and category
   const filteredInvoices = useMemo(() => {
     return invoices.filter(invoice => {
-      const invoiceDate = new Date(invoice.createdAt || invoice.date)
+      // Use the actual invoice date, not creation date
+      const invoiceDate = new Date(invoice.date)
       const isInDateRange = isWithinInterval(invoiceDate, { start: dateRange.from, end: dateRange.to })
       const isInCategory = selectedCategory === 'all' || invoice.category === selectedCategory
       return isInDateRange && isInCategory
@@ -99,7 +100,7 @@ export function Reports() {
       const monthEnd = endOfMonth(current)
       
       const monthInvoices = filteredInvoices.filter(invoice => {
-        const invoiceDate = new Date(invoice.createdAt || invoice.date)
+        const invoiceDate = new Date(invoice.date)
         return isWithinInterval(invoiceDate, { start: monthStart, end: monthEnd })
       })
       
@@ -153,7 +154,7 @@ export function Reports() {
     const previousPeriodStart = new Date(dateRange.from)
     previousPeriodStart.setMonth(previousPeriodStart.getMonth() - 6)
     const previousPeriodInvoices = invoices.filter(invoice => {
-      const invoiceDate = new Date(invoice.createdAt || invoice.date)
+      const invoiceDate = new Date(invoice.date)
       return isWithinInterval(invoiceDate, { start: previousPeriodStart, end: dateRange.from })
     })
     const previousAmount = previousPeriodInvoices.reduce((sum, inv) => sum + inv.amount, 0)

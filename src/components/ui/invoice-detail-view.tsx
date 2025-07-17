@@ -301,7 +301,7 @@ export function InvoiceDetailView({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-[100vw] max-h-[100vh] w-full h-full m-0 rounded-none">
+      <DialogContent className="max-w-[100vw] max-h-[100vh] w-full h-full m-0 rounded-none p-0">
         <DialogHeader className="px-6 py-4 border-b">
           <DialogTitle className="flex items-center justify-between">
             <span>Invoice Details - {invoice.fileName}</span>

@@ -83,6 +83,12 @@ interface TaxCompliance {
   amount?: number
   dueDate?: string
   status: 'compliant' | 'attention' | 'violation'
+  evidence?: {
+    lawReference: string
+    source: string
+    url?: string
+    excerpt: string
+  }
 }
 
 // Mock data for demonstration
@@ -136,9 +142,9 @@ const generateCashFlowPredictions = (invoices: any[]): CashFlowPrediction[] => {
   const monthlyData: { [key: string]: number } = {}
   const currentDate = new Date()
   
-  // Group invoices by month
+  // Group invoices by month using actual invoice dates
   invoices.forEach(invoice => {
-    const date = new Date(invoice.date || invoice.createdAt)
+    const date = new Date(invoice.date)
     const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
     monthlyData[monthKey] = (monthlyData[monthKey] || 0) + invoice.amount
   })
@@ -180,7 +186,13 @@ const generateTaxCompliance = (invoices: any[]): TaxCompliance[] => {
         type: 'requirement',
         title: 'No Invoice Data Available',
         description: 'Upload invoices to receive AI-powered tax compliance insights and deduction recommendations.',
-        status: 'attention'
+        status: 'attention',
+        evidence: {
+          lawReference: 'IRS Publication 535',
+          source: 'IRS Business Expenses Guide',
+          url: 'https://www.irs.gov/publications/p535',
+          excerpt: 'To be deductible, a business expense must be both ordinary and necessary. An ordinary expense is one that is common and accepted in your trade or business.'
+        }
       }
     ]
   }
@@ -198,9 +210,15 @@ const generateTaxCompliance = (invoices: any[]): TaxCompliance[] => {
       id: 'equipment-deduction',
       type: 'deduction',
       title: 'Business Equipment Deductions Available',
-      description: `${officeEquipment.length} equipment purchases totaling ${equipmentTotal.toFixed(2)} may qualify for business deductions. Consider Section 179 immediate expensing.`,
+      description: `${officeEquipment.length} equipment purchases totaling $${equipmentTotal.toFixed(2)} may qualify for business deductions. Consider Section 179 immediate expensing.`,
       amount: equipmentTotal,
-      status: 'compliant'
+      status: 'compliant',
+      evidence: {
+        lawReference: 'IRC Section 179',
+        source: 'Internal Revenue Code Section 179',
+        url: 'https://www.irs.gov/publications/p946',
+        excerpt: 'You can elect to recover all or part of the cost of certain qualifying property, up to a limit, by deducting it in the year you place the property in service.'
+      }
     })
   }
 
@@ -212,7 +230,13 @@ const generateTaxCompliance = (invoices: any[]): TaxCompliance[] => {
       type: 'warning',
       title: 'Receipt Documentation Review Needed',
       description: `${largeExpenses.length} expenses over $75 have low AI confidence scores. Ensure proper receipt documentation for tax compliance.`,
-      status: 'violation'
+      status: 'violation',
+      evidence: {
+        lawReference: 'IRC Section 274(d)',
+        source: 'IRS Substantiation Requirements',
+        url: 'https://www.irs.gov/publications/p463',
+        excerpt: 'You must keep records to prove certain elements of an expense or use of listed property. The records must be written and must show the elements of each expense or use.'
+      }
     })
   }
 
@@ -226,7 +250,13 @@ const generateTaxCompliance = (invoices: any[]): TaxCompliance[] => {
     description: 'Quarterly estimated tax payment may be due based on your business income.',
     amount: Math.round(totalAmount * 0.15), // Rough estimate
     dueDate: nextQuarterDates[currentQuarter - 1],
-    status: 'attention'
+    status: 'attention',
+    evidence: {
+      lawReference: 'IRC Section 6654',
+      source: 'IRS Form 1040ES Instructions',
+      url: 'https://www.irs.gov/forms-pubs/about-form-1040es',
+      excerpt: 'Generally, you must pay estimated tax for the current tax year if both of the following apply: You expect to owe at least $1,000 in tax for the current tax year after subtracting your withholding and refundable credits.'
+    }
   })
 
   // Business meal deductions
@@ -241,9 +271,35 @@ const generateTaxCompliance = (invoices: any[]): TaxCompliance[] => {
       id: 'meal-deduction',
       type: 'deduction',
       title: 'Business Meal Deductions',
-      description: `${mealExpenses.length} potential business meal expenses totaling ${mealTotal.toFixed(2)}. 50% may be deductible for business meals.`,
+      description: `${mealExpenses.length} potential business meal expenses totaling $${mealTotal.toFixed(2)}. 50% may be deductible for business meals.`,
       amount: mealTotal * 0.5,
-      status: 'compliant'
+      status: 'compliant',
+      evidence: {
+        lawReference: 'IRC Section 274(n)',
+        source: 'IRS Publication 463 - Travel, Gift, and Car Expenses',
+        url: 'https://www.irs.gov/publications/p463',
+        excerpt: 'You can deduct 50% of the cost of business meals if the expense is not lavish or extravagant and you (or your employee) are present at the meal.'
+      }
+    })
+  }
+
+  // Home office deduction (if applicable)
+  const officeSupplies = invoices.filter(inv => inv.category === 'Office Supplies')
+  if (officeSupplies.length > 3) {
+    const officeTotal = officeSupplies.reduce((sum, inv) => sum + inv.amount, 0)
+    compliance.push({
+      id: 'home-office-deduction',
+      type: 'deduction',
+      title: 'Home Office Deduction Opportunity',
+      description: `With $${officeTotal.toFixed(2)} in office supplies, you may qualify for home office deductions if you use part of your home exclusively for business.`,
+      amount: officeTotal,
+      status: 'attention',
+      evidence: {
+        lawReference: 'IRC Section 280A',
+        source: 'IRS Publication 587 - Business Use of Your Home',
+        url: 'https://www.irs.gov/publications/p587',
+        excerpt: 'You may be able to deduct expenses for the business use of your home if you use part of your home exclusively and regularly for your trade or business.'
+      }
     })
   }
 
@@ -315,10 +371,10 @@ export function AIInsights() {
         id: 'initial-1',
         type: 'trend',
         title: 'Invoice Processing Summary',
-        description: `Successfully processed ${invoices.length} invoices with a total value of ${totalAmount.toFixed(2)}. Average invoice amount is ${avgAmount.toFixed(2)}.`,
+        description: `Successfully processed ${invoices.length} invoices with a total value of $${totalAmount.toFixed(2)}. Average invoice amount is $${avgAmount.toFixed(2)}.`,
         impact: 'medium',
         confidence: 100,
-        value: `${totalAmount.toFixed(2)}`,
+        value: `$${totalAmount.toFixed(2)}`,
         icon: FileText
       }
     ]
@@ -328,10 +384,10 @@ export function AIInsights() {
         id: 'initial-2',
         type: 'trend',
         title: `Top Spending Category: ${topCategory[0]}`,
-        description: `${topCategory[0]} accounts for ${((topCategory[1] / totalAmount) * 100).toFixed(1)}% of your total spending. This represents ${topCategory[1].toFixed(2)} across your invoices.`,
+        description: `${topCategory[0]} accounts for ${((topCategory[1] / totalAmount) * 100).toFixed(1)}% of your total spending. This represents $${topCategory[1].toFixed(2)} across your invoices.`,
         impact: 'medium',
         confidence: 95,
-        value: `${topCategory[1].toFixed(2)}`,
+        value: `$${topCategory[1].toFixed(2)}`,
         icon: PieChart
       })
     }
@@ -369,7 +425,7 @@ export function AIInsights() {
 
       // Prepare detailed data for AI analysis
       const invoiceData = storedInvoices.slice(0, 15).map((inv: any) => 
-        `${inv.vendor}: ${inv.amount} (${inv.date}) - ${inv.category || 'Uncategorized'} [Confidence: ${inv.aiConfidence || 'N/A'}%]`
+        `${inv.vendor}: $${inv.amount} (${inv.date}) - ${inv.category || 'Uncategorized'} [Confidence: ${inv.aiConfidence || 'N/A'}%]`
       ).join('\n')
 
       const { text } = await blink.ai.generateText({
@@ -377,10 +433,10 @@ export function AIInsights() {
 
 FINANCIAL SUMMARY:
 - Total invoices: ${storedInvoices.length}
-- Total amount: ${totalAmount.toFixed(2)}
-- Average invoice: ${avgAmount.toFixed(2)}
-- Top category: ${topCategory?.[0]} (${topCategory?.[1]?.toFixed(2)})
-- Top vendor: ${topVendor?.[0]} (${topVendor?.[1]?.toFixed(2)})
+- Total amount: $${totalAmount.toFixed(2)}
+- Average invoice: $${avgAmount.toFixed(2)}
+- Top category: ${topCategory?.[0]} ($${topCategory?.[1]?.toFixed(2)})
+- Top vendor: ${topVendor?.[0]} ($${topVendor?.[1]?.toFixed(2)})
 
 RECENT INVOICE DATA:
 ${invoiceData}
@@ -454,10 +510,10 @@ Focus on actionable recommendations that can improve financial performance and w
           id: 'category-' + Date.now(),
           type: 'trend',
           title: `High ${topCategory[0]} Spending Detected`,
-          description: `${topCategory[0]} represents ${((topCategory[1] / totalAmount) * 100).toFixed(1)}% of total spending (${topCategory[1].toFixed(2)}). Consider reviewing these expenses for optimization opportunities.`,
+          description: `${topCategory[0]} represents ${((topCategory[1] / totalAmount) * 100).toFixed(1)}% of total spending ($${topCategory[1].toFixed(2)}). Consider reviewing these expenses for optimization opportunities.`,
           impact: 'medium',
           confidence: 95,
-          value: `${topCategory[1].toFixed(2)}`,
+          value: `$${topCategory[1].toFixed(2)}`,
           icon: TrendingUp
         })
       }
@@ -468,10 +524,10 @@ Focus on actionable recommendations that can improve financial performance and w
           id: 'vendor-' + Date.now(),
           type: 'anomaly',
           title: `Vendor Concentration Risk: ${topVendor[0]}`,
-          description: `${topVendor[0]} accounts for ${((topVendor[1] / totalAmount) * 100).toFixed(1)}% of total spending (${topVendor[1].toFixed(2)}). Consider diversifying suppliers to reduce dependency risk.`,
+          description: `${topVendor[0]} accounts for ${((topVendor[1] / totalAmount) * 100).toFixed(1)}% of total spending ($${topVendor[1].toFixed(2)}). Consider diversifying suppliers to reduce dependency risk.`,
           impact: 'medium',
           confidence: 92,
-          value: `${topVendor[1].toFixed(2)}`,
+          value: `$${topVendor[1].toFixed(2)}`,
           icon: AlertTriangle
         })
       }
@@ -501,7 +557,7 @@ Focus on actionable recommendations that can improve financial performance and w
           id: Date.now().toString(),
           type: 'recommendation',
           title: 'Financial Data Analysis Complete',
-          description: `Analyzed ${storedInvoices.length} invoices totaling ${totalAmount.toFixed(2)}. ${text.substring(0, 150)}...`,
+          description: `Analyzed ${storedInvoices.length} invoices totaling $${totalAmount.toFixed(2)}. ${text.substring(0, 150)}...`,
           impact: 'medium',
           confidence: 89,
           icon: Brain
@@ -1023,7 +1079,7 @@ Focus on actionable recommendations that can improve financial performance and w
                 <span>Tax Compliance & Optimization</span>
               </CardTitle>
               <CardDescription>
-                AI-powered tax compliance monitoring and deduction optimization
+                AI-powered tax compliance monitoring and deduction optimization with legal evidence
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -1037,7 +1093,7 @@ Focus on actionable recommendations that can improve financial performance and w
                           {item.type === 'requirement' && <Clock className="w-5 h-5 text-yellow-600" />}
                           {item.type === 'warning' && <AlertTriangle className="w-5 h-5 text-red-600" />}
                         </div>
-                        <div>
+                        <div className="flex-1">
                           <h4 className="font-medium">{item.title}</h4>
                           <p className="text-sm text-muted-foreground mt-1">
                             {item.description}
@@ -1046,6 +1102,32 @@ Focus on actionable recommendations that can improve financial performance and w
                             <p className="text-xs text-muted-foreground mt-1">
                               Due: {new Date(item.dueDate).toLocaleDateString()}
                             </p>
+                          )}
+                          {item.evidence && (
+                            <div className="mt-3 p-3 bg-blue-50 rounded-lg border-l-4 border-blue-400">
+                              <div className="flex items-center space-x-2 mb-2">
+                                <Shield className="w-4 h-4 text-blue-600" />
+                                <span className="text-sm font-medium text-blue-800">
+                                  {item.evidence.lawReference}
+                                </span>
+                              </div>
+                              <p className="text-xs text-blue-700 mb-1">
+                                Source: {item.evidence.source}
+                              </p>
+                              <p className="text-xs text-blue-600 italic">
+                                "{item.evidence.excerpt}"
+                              </p>
+                              {item.evidence.url && (
+                                <a 
+                                  href={item.evidence.url} 
+                                  target="_blank" 
+                                  rel="noopener noreferrer"
+                                  className="text-xs text-blue-600 hover:text-blue-800 underline mt-1 inline-block"
+                                >
+                                  View Full Documentation →
+                                </a>
+                              )}
+                            </div>
                           )}
                         </div>
                       </div>
@@ -1195,7 +1277,7 @@ Focus on actionable recommendations that can improve financial performance and w
                       const thisMonth = new Date().getMonth()
                       const thisYear = new Date().getFullYear()
                       const thisMonthInvoices = invoiceData.filter(inv => {
-                        const date = new Date(inv.date || inv.createdAt)
+                        const date = new Date(inv.date)
                         return date.getMonth() === thisMonth && date.getFullYear() === thisYear
                       })
                       const thisMonthTotal = thisMonthInvoices.reduce((sum, inv) => sum + (inv.amount || 0), 0)
