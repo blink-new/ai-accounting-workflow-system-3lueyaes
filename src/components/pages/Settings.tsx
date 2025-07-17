@@ -8,6 +8,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs'
 import { Badge } from '../ui/badge'
 import { Separator } from '../ui/separator'
 import { Alert, AlertDescription } from '../ui/alert'
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '../ui/dialog'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select'
+import { Textarea } from '../ui/textarea'
+import { toast } from '../../hooks/use-toast'
 import { 
   Settings as SettingsIcon,
   Link,
@@ -31,7 +35,14 @@ import {
   Camera,
   Receipt,
   Calculator,
-  Globe
+  Globe,
+  Plus,
+  Trash2,
+  Edit,
+  Copy,
+  RefreshCw,
+  Save,
+  X
 } from 'lucide-react'
 
 interface IntegrationStatus {
@@ -43,6 +54,17 @@ interface IntegrationStatus {
   status: 'active' | 'inactive' | 'error' | 'pending'
   lastSync?: string
   features: string[]
+  config?: Record<string, any>
+}
+
+interface TeamMember {
+  id: string
+  name: string
+  email: string
+  role: 'admin' | 'editor' | 'viewer'
+  avatar?: string
+  lastActive: string
+  status: 'active' | 'inactive' | 'pending'
 }
 
 export function Settings() {
@@ -54,7 +76,8 @@ export function Settings() {
       icon: Building,
       connected: false,
       status: 'inactive',
-      features: ['Invoice sync', 'Chart of accounts', 'Customer data', 'Tax reporting']
+      features: ['Invoice sync', 'Chart of accounts', 'Customer data', 'Tax reporting'],
+      config: { clientId: '', clientSecret: '', sandboxMode: true }
     },
     {
       id: 'xero',
@@ -63,7 +86,8 @@ export function Settings() {
       icon: Database,
       connected: false,
       status: 'inactive',
-      features: ['Bank reconciliation', 'Invoice management', 'Financial reporting', 'Tax compliance']
+      features: ['Bank reconciliation', 'Invoice management', 'Financial reporting', 'Tax compliance'],
+      config: { clientId: '', clientSecret: '', redirectUri: '' }
     },
     {
       id: 'stripe',
@@ -73,7 +97,8 @@ export function Settings() {
       connected: true,
       status: 'active',
       lastSync: '2 minutes ago',
-      features: ['Payment processing', 'Subscription billing', 'Customer management', 'Analytics']
+      features: ['Payment processing', 'Subscription billing', 'Customer management', 'Analytics'],
+      config: { publishableKey: 'pk_test_...', secretKey: 'sk_test_...', webhookSecret: 'whsec_...' }
     },
     {
       id: 'gmail',
@@ -83,7 +108,8 @@ export function Settings() {
       connected: true,
       status: 'active',
       lastSync: '5 minutes ago',
-      features: ['Email parsing', 'Attachment extraction', 'Auto-categorization', 'Smart filtering']
+      features: ['Email parsing', 'Attachment extraction', 'Auto-categorization', 'Smart filtering'],
+      config: { clientId: '', clientSecret: '', refreshToken: '' }
     },
     {
       id: 'dropbox',
@@ -92,7 +118,8 @@ export function Settings() {
       icon: Cloud,
       connected: false,
       status: 'inactive',
-      features: ['File sync', 'Auto-backup', 'Document scanning', 'Version control']
+      features: ['File sync', 'Auto-backup', 'Document scanning', 'Version control'],
+      config: { appKey: '', appSecret: '', accessToken: '' }
     },
     {
       id: 'slack',
@@ -101,7 +128,8 @@ export function Settings() {
       icon: Webhook,
       connected: false,
       status: 'inactive',
-      features: ['Real-time notifications', 'Approval workflows', 'Team collaboration', 'Status updates']
+      features: ['Real-time notifications', 'Approval workflows', 'Team collaboration', 'Status updates'],
+      config: { botToken: '', signingSecret: '', channelId: '' }
     }
   ])
 
@@ -136,22 +164,197 @@ export function Settings() {
     sessionTimeout: 60
   })
 
-  const handleIntegrationToggle = async (integrationId: string) => {
-    setIntegrations(prev => prev.map(integration => {
-      if (integration.id === integrationId) {
-        const newConnected = !integration.connected
-        return {
-          ...integration,
-          connected: newConnected,
-          status: newConnected ? 'active' : 'inactive',
-          lastSync: newConnected ? 'Just now' : undefined
-        }
-      }
-      return integration
-    }))
+  const [teamMembers, setTeamMembers] = useState<TeamMember[]>([
+    {
+      id: '1',
+      name: 'John Doe',
+      email: 'john@company.com',
+      role: 'admin',
+      lastActive: '2 minutes ago',
+      status: 'active'
+    },
+    {
+      id: '2',
+      name: 'Jane Smith',
+      email: 'jane@company.com',
+      role: 'editor',
+      lastActive: '1 hour ago',
+      status: 'active'
+    },
+    {
+      id: '3',
+      name: 'Mike Johnson',
+      email: 'mike@company.com',
+      role: 'viewer',
+      lastActive: '1 day ago',
+      status: 'inactive'
+    }
+  ])
 
-    // Simulate API call
-    await new Promise(resolve => setTimeout(resolve, 1000))
+  const [apiSettings, setApiSettings] = useState({
+    apiKey: 'sk_live_••••••••••••••••',
+    webhookUrl: 'https://ai-accounting-workflow-system-3lueyaes.sites.blink.new/api/webhooks',
+    rateLimitPerHour: 1000,
+    enableCors: true
+  })
+
+  const [selectedIntegration, setSelectedIntegration] = useState<IntegrationStatus | null>(null)
+  const [isConfigDialogOpen, setIsConfigDialogOpen] = useState(false)
+  const [isInviteDialogOpen, setIsInviteDialogOpen] = useState(false)
+  const [inviteForm, setInviteForm] = useState({ email: '', role: 'viewer' as TeamMember['role'] })
+  const [isLoading, setIsLoading] = useState(false)
+
+  // Load settings from localStorage on mount
+  useEffect(() => {
+    const savedSettings = localStorage.getItem('accountingAppSettings')
+    if (savedSettings) {
+      try {
+        const parsed = JSON.parse(savedSettings)
+        setAiFeatures(prev => ({ ...prev, ...parsed.aiFeatures }))
+        setNotifications(prev => ({ ...prev, ...parsed.notifications }))
+        setTeamSettings(prev => ({ ...prev, ...parsed.teamSettings }))
+        setApiSettings(prev => ({ ...prev, ...parsed.apiSettings }))
+      } catch (error) {
+        console.error('Failed to load settings:', error)
+      }
+    }
+  }, [])
+
+  // Save settings to localStorage whenever they change
+  useEffect(() => {
+    const settings = {
+      aiFeatures,
+      notifications,
+      teamSettings,
+      apiSettings,
+      timestamp: Date.now()
+    }
+    localStorage.setItem('accountingAppSettings', JSON.stringify(settings))
+  }, [aiFeatures, notifications, teamSettings, apiSettings])
+
+  const handleIntegrationToggle = async (integrationId: string) => {
+    setIsLoading(true)
+    
+    try {
+      setIntegrations(prev => prev.map(integration => {
+        if (integration.id === integrationId) {
+          const newConnected = !integration.connected
+          return {
+            ...integration,
+            connected: newConnected,
+            status: newConnected ? 'active' : 'inactive',
+            lastSync: newConnected ? 'Just now' : undefined
+          }
+        }
+        return integration
+      }))
+
+      // Simulate API call
+      await new Promise(resolve => setTimeout(resolve, 1500))
+      
+      const integration = integrations.find(i => i.id === integrationId)
+      toast({
+        title: integration?.connected ? 'Integration Disconnected' : 'Integration Connected',
+        description: `${integration?.name} has been ${integration?.connected ? 'disconnected' : 'connected'} successfully.`,
+      })
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: 'Failed to update integration. Please try again.',
+        variant: 'destructive'
+      })
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const handleConfigureIntegration = (integration: IntegrationStatus) => {
+    setSelectedIntegration(integration)
+    setIsConfigDialogOpen(true)
+  }
+
+  const handleSaveIntegrationConfig = async () => {
+    if (!selectedIntegration) return
+    
+    setIsLoading(true)
+    try {
+      // Simulate API call to save configuration
+      await new Promise(resolve => setTimeout(resolve, 1000))
+      
+      setIntegrations(prev => prev.map(integration => 
+        integration.id === selectedIntegration.id 
+          ? { ...integration, config: selectedIntegration.config }
+          : integration
+      ))
+      
+      toast({
+        title: 'Configuration Saved',
+        description: `${selectedIntegration.name} configuration has been updated.`,
+      })
+      
+      setIsConfigDialogOpen(false)
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: 'Failed to save configuration. Please try again.',
+        variant: 'destructive'
+      })
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const handleTestWebhook = async () => {
+    setIsLoading(true)
+    try {
+      // Simulate webhook test
+      await new Promise(resolve => setTimeout(resolve, 2000))
+      
+      toast({
+        title: 'Webhook Test Successful',
+        description: 'Test payload sent successfully to your webhook endpoint.',
+      })
+    } catch (error) {
+      toast({
+        title: 'Webhook Test Failed',
+        description: 'Unable to reach webhook endpoint. Please check your URL.',
+        variant: 'destructive'
+      })
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const handleGenerateApiKey = async () => {
+    setIsLoading(true)
+    try {
+      // Simulate API key generation
+      await new Promise(resolve => setTimeout(resolve, 1000))
+      
+      const newApiKey = `sk_live_${Math.random().toString(36).substring(2, 15)}${Math.random().toString(36).substring(2, 15)}`
+      setApiSettings(prev => ({ ...prev, apiKey: newApiKey }))
+      
+      toast({
+        title: 'New API Key Generated',
+        description: 'Your new API key has been generated. Make sure to copy it now.',
+      })
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: 'Failed to generate API key. Please try again.',
+        variant: 'destructive'
+      })
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const handleCopyApiKey = () => {
+    navigator.clipboard.writeText(apiSettings.apiKey)
+    toast({
+      title: 'Copied',
+      description: 'API key copied to clipboard.',
+    })
   }
 
   const handleAiFeatureToggle = (feature: keyof typeof aiFeatures) => {
@@ -159,6 +362,11 @@ export function Settings() {
       ...prev,
       [feature]: !prev[feature]
     }))
+    
+    toast({
+      title: 'AI Feature Updated',
+      description: `${feature.replace(/([A-Z])/g, ' $1').toLowerCase()} has been ${aiFeatures[feature] ? 'disabled' : 'enabled'}.`,
+    })
   }
 
   const handleNotificationToggle = (setting: keyof typeof notifications) => {
@@ -175,6 +383,75 @@ export function Settings() {
         [setting]: !prev[setting]
       }))
     }
+  }
+
+  const handleInviteTeamMember = async () => {
+    if (!inviteForm.email) return
+    
+    setIsLoading(true)
+    try {
+      // Simulate sending invitation
+      await new Promise(resolve => setTimeout(resolve, 1500))
+      
+      const newMember: TeamMember = {
+        id: Date.now().toString(),
+        name: inviteForm.email.split('@')[0],
+        email: inviteForm.email,
+        role: inviteForm.role,
+        lastActive: 'Never',
+        status: 'pending'
+      }
+      
+      setTeamMembers(prev => [...prev, newMember])
+      setInviteForm({ email: '', role: 'viewer' })
+      setIsInviteDialogOpen(false)
+      
+      toast({
+        title: 'Invitation Sent',
+        description: `Invitation sent to ${inviteForm.email}`,
+      })
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: 'Failed to send invitation. Please try again.',
+        variant: 'destructive'
+      })
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const handleRemoveTeamMember = async (memberId: string) => {
+    setIsLoading(true)
+    try {
+      await new Promise(resolve => setTimeout(resolve, 1000))
+      
+      setTeamMembers(prev => prev.filter(member => member.id !== memberId))
+      
+      toast({
+        title: 'Team Member Removed',
+        description: 'Team member has been removed successfully.',
+      })
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: 'Failed to remove team member. Please try again.',
+        variant: 'destructive'
+      })
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const handleUpdateMemberRole = async (memberId: string, newRole: TeamMember['role']) => {
+    setTeamMembers(prev => prev.map(member => 
+      member.id === memberId ? { ...member, role: newRole } : member
+    ))
+    
+    toast({
+      title: 'Role Updated',
+      description: 'Team member role has been updated.',
+    })
   }
 
   const getStatusColor = (status: string) => {
@@ -198,6 +475,19 @@ export function Settings() {
         return <AlertCircle className="w-4 h-4 text-red-600" />
       default:
         return <AlertCircle className="w-4 h-4 text-gray-400" />
+    }
+  }
+
+  const getRoleColor = (role: string) => {
+    switch (role) {
+      case 'admin':
+        return 'bg-red-100 text-red-800'
+      case 'editor':
+        return 'bg-blue-100 text-blue-800'
+      case 'viewer':
+        return 'bg-gray-100 text-gray-800'
+      default:
+        return 'bg-gray-100 text-gray-800'
     }
   }
 
@@ -233,7 +523,7 @@ export function Settings() {
               {integrations.map((integration) => {
                 const Icon = integration.icon
                 return (
-                  <div key={integration.id} className="flex items-center justify-between p-4 border rounded-lg">
+                  <div key={integration.id} className="flex items-center justify-between p-4 border rounded-lg hover:bg-gray-50 transition-colors">
                     <div className="flex items-center space-x-4">
                       <div className="p-2 bg-gray-100 rounded-lg">
                         <Icon className="w-6 h-6 text-gray-600" />
@@ -272,9 +562,14 @@ export function Settings() {
                       <Switch
                         checked={integration.connected}
                         onCheckedChange={() => handleIntegrationToggle(integration.id)}
+                        disabled={isLoading}
                       />
                       {integration.connected && (
-                        <Button variant="outline" size="sm">
+                        <Button 
+                          variant="outline" 
+                          size="sm"
+                          onClick={() => handleConfigureIntegration(integration)}
+                        >
                           <ExternalLink className="w-4 h-4 mr-1" />
                           Configure
                         </Button>
@@ -301,11 +596,24 @@ export function Settings() {
                     <Input
                       id="api-key"
                       type="password"
-                      value="sk_live_••••••••••••••••"
+                      value={apiSettings.apiKey}
                       readOnly
+                      className="font-mono"
                     />
-                    <Button variant="outline" size="sm">
-                      <Key className="w-4 h-4" />
+                    <Button 
+                      variant="outline" 
+                      size="sm"
+                      onClick={handleCopyApiKey}
+                    >
+                      <Copy className="w-4 h-4" />
+                    </Button>
+                    <Button 
+                      variant="outline" 
+                      size="sm"
+                      onClick={handleGenerateApiKey}
+                      disabled={isLoading}
+                    >
+                      <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
                     </Button>
                   </div>
                 </div>
@@ -313,15 +621,45 @@ export function Settings() {
                   <Label htmlFor="webhook-url">Webhook URL</Label>
                   <Input
                     id="webhook-url"
-                    placeholder="https://your-app.com/webhooks"
-                    defaultValue="https://ai-accounting-workflow-system-3lueyaes.sites.blink.new/api/webhooks"
+                    value={apiSettings.webhookUrl}
+                    onChange={(e) => setApiSettings(prev => ({ ...prev, webhookUrl: e.target.value }))}
                   />
                 </div>
               </div>
-              <Button variant="outline">
-                <Webhook className="w-4 h-4 mr-2" />
-                Test Webhook
-              </Button>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="rate-limit">Rate Limit (per hour)</Label>
+                  <Input
+                    id="rate-limit"
+                    type="number"
+                    value={apiSettings.rateLimitPerHour}
+                    onChange={(e) => setApiSettings(prev => ({ ...prev, rateLimitPerHour: parseInt(e.target.value) || 1000 }))}
+                  />
+                </div>
+                <div className="flex items-center space-x-2 mt-6">
+                  <Switch
+                    checked={apiSettings.enableCors}
+                    onCheckedChange={(checked) => setApiSettings(prev => ({ ...prev, enableCors: checked }))}
+                  />
+                  <Label>Enable CORS</Label>
+                </div>
+              </div>
+              
+              <div className="flex space-x-2">
+                <Button 
+                  variant="outline"
+                  onClick={handleTestWebhook}
+                  disabled={isLoading}
+                >
+                  <Webhook className={`w-4 h-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
+                  Test Webhook
+                </Button>
+                <Button variant="outline">
+                  <FileText className="w-4 h-4 mr-2" />
+                  View Logs
+                </Button>
+              </div>
             </CardContent>
           </Card>
         </TabsContent>
@@ -340,7 +678,7 @@ export function Settings() {
             <CardContent className="space-y-6">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="space-y-4">
-                  <div className="flex items-center justify-between">
+                  <div className="flex items-center justify-between p-3 border rounded-lg hover:bg-gray-50 transition-colors">
                     <div className="flex items-center space-x-3">
                       <Camera className="w-5 h-5 text-blue-600" />
                       <div>
@@ -354,7 +692,7 @@ export function Settings() {
                     />
                   </div>
 
-                  <div className="flex items-center justify-between">
+                  <div className="flex items-center justify-between p-3 border rounded-lg hover:bg-gray-50 transition-colors">
                     <div className="flex items-center space-x-3">
                       <Receipt className="w-5 h-5 text-green-600" />
                       <div>
@@ -368,7 +706,7 @@ export function Settings() {
                     />
                   </div>
 
-                  <div className="flex items-center justify-between">
+                  <div className="flex items-center justify-between p-3 border rounded-lg hover:bg-gray-50 transition-colors">
                     <div className="flex items-center space-x-3">
                       <Shield className="w-5 h-5 text-purple-600" />
                       <div>
@@ -382,7 +720,7 @@ export function Settings() {
                     />
                   </div>
 
-                  <div className="flex items-center justify-between">
+                  <div className="flex items-center justify-between p-3 border rounded-lg hover:bg-gray-50 transition-colors">
                     <div className="flex items-center space-x-3">
                       <Calculator className="w-5 h-5 text-orange-600" />
                       <div>
@@ -398,7 +736,7 @@ export function Settings() {
                 </div>
 
                 <div className="space-y-4">
-                  <div className="flex items-center justify-between">
+                  <div className="flex items-center justify-between p-3 border rounded-lg hover:bg-gray-50 transition-colors">
                     <div className="flex items-center space-x-3">
                       <AlertCircle className="w-5 h-5 text-red-600" />
                       <div>
@@ -412,7 +750,7 @@ export function Settings() {
                     />
                   </div>
 
-                  <div className="flex items-center justify-between">
+                  <div className="flex items-center justify-between p-3 border rounded-lg hover:bg-gray-50 transition-colors">
                     <div className="flex items-center space-x-3">
                       <Zap className="w-5 h-5 text-yellow-600" />
                       <div>
@@ -426,7 +764,7 @@ export function Settings() {
                     />
                   </div>
 
-                  <div className="flex items-center justify-between">
+                  <div className="flex items-center justify-between p-3 border rounded-lg hover:bg-gray-50 transition-colors">
                     <div className="flex items-center space-x-3">
                       <Globe className="w-5 h-5 text-teal-600" />
                       <div>
@@ -440,7 +778,7 @@ export function Settings() {
                     />
                   </div>
 
-                  <div className="flex items-center justify-between">
+                  <div className="flex items-center justify-between p-3 border rounded-lg hover:bg-gray-50 transition-colors">
                     <div className="flex items-center space-x-3">
                       <CheckCircle className="w-5 h-5 text-indigo-600" />
                       <div>
@@ -485,7 +823,7 @@ export function Settings() {
                 <div className="space-y-4">
                   <h3 className="font-medium text-foreground">Delivery Methods</h3>
                   
-                  <div className="flex items-center justify-between">
+                  <div className="flex items-center justify-between p-3 border rounded-lg hover:bg-gray-50 transition-colors">
                     <div className="flex items-center space-x-3">
                       <Mail className="w-5 h-5 text-blue-600" />
                       <div>
@@ -499,7 +837,7 @@ export function Settings() {
                     />
                   </div>
 
-                  <div className="flex items-center justify-between">
+                  <div className="flex items-center justify-between p-3 border rounded-lg hover:bg-gray-50 transition-colors">
                     <div className="flex items-center space-x-3">
                       <Webhook className="w-5 h-5 text-green-600" />
                       <div>
@@ -513,7 +851,7 @@ export function Settings() {
                     />
                   </div>
 
-                  <div className="flex items-center justify-between">
+                  <div className="flex items-center justify-between p-3 border rounded-lg hover:bg-gray-50 transition-colors">
                     <div className="flex items-center space-x-3">
                       <Smartphone className="w-5 h-5 text-purple-600" />
                       <div>
@@ -531,7 +869,7 @@ export function Settings() {
                 <div className="space-y-4">
                   <h3 className="font-medium text-foreground">Notification Types</h3>
                   
-                  <div className="flex items-center justify-between">
+                  <div className="flex items-center justify-between p-3 border rounded-lg hover:bg-gray-50 transition-colors">
                     <div className="flex items-center space-x-3">
                       <FileText className="w-5 h-5 text-orange-600" />
                       <div>
@@ -545,7 +883,7 @@ export function Settings() {
                     />
                   </div>
 
-                  <div className="flex items-center justify-between">
+                  <div className="flex items-center justify-between p-3 border rounded-lg hover:bg-gray-50 transition-colors">
                     <div className="flex items-center space-x-3">
                       <FileText className="w-5 h-5 text-teal-600" />
                       <div>
@@ -559,7 +897,7 @@ export function Settings() {
                     />
                   </div>
 
-                  <div className="flex items-center justify-between">
+                  <div className="flex items-center justify-between p-3 border rounded-lg hover:bg-gray-50 transition-colors">
                     <div className="flex items-center space-x-3">
                       <AlertCircle className="w-5 h-5 text-red-600" />
                       <div>
@@ -573,7 +911,7 @@ export function Settings() {
                     />
                   </div>
 
-                  <div className="flex items-center justify-between">
+                  <div className="flex items-center justify-between p-3 border rounded-lg hover:bg-gray-50 transition-colors">
                     <div className="flex items-center space-x-3">
                       <CheckCircle className="w-5 h-5 text-indigo-600" />
                       <div>
@@ -608,7 +946,7 @@ export function Settings() {
                 <div className="space-y-4">
                   <h3 className="font-medium text-foreground">Access Control</h3>
                   
-                  <div className="flex items-center justify-between">
+                  <div className="flex items-center justify-between p-3 border rounded-lg hover:bg-gray-50 transition-colors">
                     <div>
                       <Label className="text-sm font-medium">Require Approval</Label>
                       <p className="text-xs text-muted-foreground">Require approval for invoice processing</p>
@@ -635,7 +973,7 @@ export function Settings() {
                     </p>
                   </div>
 
-                  <div className="flex items-center justify-between">
+                  <div className="flex items-center justify-between p-3 border rounded-lg hover:bg-gray-50 transition-colors">
                     <div>
                       <Label className="text-sm font-medium">Audit Trail</Label>
                       <p className="text-xs text-muted-foreground">Track all user actions and changes</p>
@@ -646,7 +984,7 @@ export function Settings() {
                     />
                   </div>
 
-                  <div className="flex items-center justify-between">
+                  <div className="flex items-center justify-between p-3 border rounded-lg hover:bg-gray-50 transition-colors">
                     <div>
                       <Label className="text-sm font-medium">Role-Based Access</Label>
                       <p className="text-xs text-muted-foreground">Enable role-based permissions</p>
@@ -661,7 +999,7 @@ export function Settings() {
                 <div className="space-y-4">
                   <h3 className="font-medium text-foreground">Security</h3>
                   
-                  <div className="flex items-center justify-between">
+                  <div className="flex items-center justify-between p-3 border rounded-lg hover:bg-gray-50 transition-colors">
                     <div>
                       <Label className="text-sm font-medium">Two-Factor Authentication</Label>
                       <p className="text-xs text-muted-foreground">Require 2FA for all team members</p>
@@ -693,45 +1031,109 @@ export function Settings() {
               <Separator />
 
               <div className="space-y-4">
-                <h3 className="font-medium text-foreground">Team Members</h3>
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between p-3 border rounded-lg">
-                    <div className="flex items-center space-x-3">
-                      <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
-                        <span className="text-sm font-medium text-blue-600">JD</span>
+                <div className="flex items-center justify-between">
+                  <h3 className="font-medium text-foreground">Team Members</h3>
+                  <Dialog open={isInviteDialogOpen} onOpenChange={setIsInviteDialogOpen}>
+                    <DialogTrigger asChild>
+                      <Button variant="outline">
+                        <Plus className="w-4 h-4 mr-2" />
+                        Invite Member
+                      </Button>
+                    </DialogTrigger>
+                    <DialogContent>
+                      <DialogHeader>
+                        <DialogTitle>Invite Team Member</DialogTitle>
+                        <DialogDescription>
+                          Send an invitation to join your accounting team.
+                        </DialogDescription>
+                      </DialogHeader>
+                      <div className="space-y-4">
+                        <div className="space-y-2">
+                          <Label htmlFor="invite-email">Email Address</Label>
+                          <Input
+                            id="invite-email"
+                            type="email"
+                            placeholder="colleague@company.com"
+                            value={inviteForm.email}
+                            onChange={(e) => setInviteForm(prev => ({ ...prev, email: e.target.value }))}
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="invite-role">Role</Label>
+                          <Select 
+                            value={inviteForm.role} 
+                            onValueChange={(value: TeamMember['role']) => setInviteForm(prev => ({ ...prev, role: value }))}
+                          >
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="viewer">Viewer - Read only access</SelectItem>
+                              <SelectItem value="editor">Editor - Can edit and create</SelectItem>
+                              <SelectItem value="admin">Admin - Full access</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
                       </div>
-                      <div>
-                        <p className="font-medium text-foreground">John Doe</p>
-                        <p className="text-sm text-muted-foreground">john@company.com</p>
-                      </div>
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      <Badge variant="outline">Admin</Badge>
-                      <Button variant="outline" size="sm">Edit</Button>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center justify-between p-3 border rounded-lg">
-                    <div className="flex items-center space-x-3">
-                      <div className="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center">
-                        <span className="text-sm font-medium text-green-600">JS</span>
-                      </div>
-                      <div>
-                        <p className="font-medium text-foreground">Jane Smith</p>
-                        <p className="text-sm text-muted-foreground">jane@company.com</p>
-                      </div>
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      <Badge variant="outline">Editor</Badge>
-                      <Button variant="outline" size="sm">Edit</Button>
-                    </div>
-                  </div>
+                      <DialogFooter>
+                        <Button variant="outline" onClick={() => setIsInviteDialogOpen(false)}>
+                          Cancel
+                        </Button>
+                        <Button onClick={handleInviteTeamMember} disabled={isLoading || !inviteForm.email}>
+                          {isLoading ? 'Sending...' : 'Send Invitation'}
+                        </Button>
+                      </DialogFooter>
+                    </DialogContent>
+                  </Dialog>
                 </div>
-
-                <Button variant="outline">
-                  <Users className="w-4 h-4 mr-2" />
-                  Invite Team Member
-                </Button>
+                
+                <div className="space-y-3">
+                  {teamMembers.map((member) => (
+                    <div key={member.id} className="flex items-center justify-between p-3 border rounded-lg hover:bg-gray-50 transition-colors">
+                      <div className="flex items-center space-x-3">
+                        <div className="w-8 h-8 bg-gradient-to-br from-blue-100 to-purple-100 rounded-full flex items-center justify-center">
+                          <span className="text-sm font-medium text-blue-600">
+                            {member.name.split(' ').map(n => n[0]).join('').toUpperCase()}
+                          </span>
+                        </div>
+                        <div>
+                          <p className="font-medium text-foreground">{member.name}</p>
+                          <p className="text-sm text-muted-foreground">{member.email}</p>
+                          <p className="text-xs text-muted-foreground">Last active: {member.lastActive}</p>
+                        </div>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <Badge className={getRoleColor(member.role)}>
+                          {member.role}
+                        </Badge>
+                        <Badge className={getStatusColor(member.status)}>
+                          {member.status}
+                        </Badge>
+                        <Select 
+                          value={member.role} 
+                          onValueChange={(value: TeamMember['role']) => handleUpdateMemberRole(member.id, value)}
+                        >
+                          <SelectTrigger className="w-24">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="viewer">Viewer</SelectItem>
+                            <SelectItem value="editor">Editor</SelectItem>
+                            <SelectItem value="admin">Admin</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <Button 
+                          variant="outline" 
+                          size="sm"
+                          onClick={() => handleRemoveTeamMember(member.id)}
+                          disabled={isLoading}
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
             </CardContent>
           </Card>
@@ -771,6 +1173,47 @@ export function Settings() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Integration Configuration Dialog */}
+      <Dialog open={isConfigDialogOpen} onOpenChange={setIsConfigDialogOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Configure {selectedIntegration?.name}</DialogTitle>
+            <DialogDescription>
+              Set up your {selectedIntegration?.name} integration settings
+            </DialogDescription>
+          </DialogHeader>
+          {selectedIntegration && (
+            <div className="space-y-4">
+              {Object.entries(selectedIntegration.config || {}).map(([key, value]) => (
+                <div key={key} className="space-y-2">
+                  <Label htmlFor={key}>
+                    {key.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase())}
+                  </Label>
+                  <Input
+                    id={key}
+                    type={key.includes('secret') || key.includes('token') ? 'password' : 'text'}
+                    value={value as string}
+                    onChange={(e) => setSelectedIntegration(prev => prev ? {
+                      ...prev,
+                      config: { ...prev.config, [key]: e.target.value }
+                    } : null)}
+                    placeholder={`Enter your ${key}`}
+                  />
+                </div>
+              ))}
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsConfigDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleSaveIntegrationConfig} disabled={isLoading}>
+              {isLoading ? 'Saving...' : 'Save Configuration'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

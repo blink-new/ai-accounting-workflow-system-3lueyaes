@@ -9,7 +9,7 @@ import { DataEditor } from './components/pages/DataEditor'
 import { AIInsights } from './components/pages/AIInsights'
 import { Reports } from './components/pages/Reports'
 import { Settings } from './components/pages/Settings'
-import { Toaster } from './components/ui/sonner'
+import { Toaster } from './components/ui/toaster'
 
 type Page = 'dashboard' | 'upload' | 'management' | 'editor' | 'insights' | 'reports' | 'settings'
 
